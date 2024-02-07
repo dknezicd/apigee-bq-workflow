@@ -1,0 +1,71 @@
+# Copyright 2021 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+
+# This triggers the Apigee X/Hybrid Analytics Big Query Export Management API endpoint.
+# This is an unsupported example workflows script.
+# By default it will export data based with a start date of -2 days and end date of -1 date.
+#
+# The workflow requires a service account with Apigee Organization Admin permissions.
+#
+# The workflow requires 3 environment variables
+# apigee_org: The Apigee organization id / project id
+# apigee_env: The main
+# bq_datastore: The name/display name of the BigQuery data store you configured on Apigee.
+#
+# The permissions and further elaboration of required inputs are as per those documented here:
+# https://cloud.google.com/apigee/docs/api-platform/analytics/export-data
+#
+# Cloud Scheduler can be used to trigger this workflow on a schedule.
+
+- envVars:
+    assign:
+      - apigeeOrg: ${sys.get_env("apigee_org")}
+      - apigeeEnv: ${sys.get_env("apigee_env")}
+      - bqDatastore: ${sys.get_env("bq_datastore")}
+
+- calculateDates:
+    assign:
+      - oneDaySeconds: 86400
+      - twoDaySeconds: 172800
+      - yesterdaysDate: ${text.substring(time.format(sys.now()-oneDaySeconds), 0, 10)}
+      - dayBeforeYesterdayDate: ${text.substring(time.format(sys.now()-twoDaySeconds), 0, 10)}
+
+- constructPayload:
+    assign:
+      - payload: {
+    "name": "Export AX to BigQuery",
+    "description": "Scheduled export to BigQuery",
+    "dateRange": {
+      "start": "${dayBeforeYesterdayDate}", 
+      "end": "${yesterdaysDate}"
+    },
+    "outputFormat": "csv",
+    "csvDelimiter": ",", 
+    "datastoreName": "${bqDatastore}"
+  }
+
+- makeHttpRequest:
+    call: http.post
+    args:
+      url:  ${"https://apigee.googleapis.com/v1/organizations/" + apigeeOrg + "/environments/" + apigeeEnv + "/analytics/exports"}
+      auth:
+        type: OAuth2
+      headers:
+        Content-Type: application/json
+      body: ${payload}
+    result: exportResponse
+
+- output:
+    return: ${exportResponse}
